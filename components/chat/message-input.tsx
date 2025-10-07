@@ -1,4 +1,3 @@
-// components/message-input.tsx
 "use client";
 
 import { useState, useRef, useCallback } from "react";
@@ -11,8 +10,7 @@ export default function MessageInput() {
   const [value, setValue] = useState("");
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
-  const { addUserMessage, setBotTyping, commitBotMessage, activeChatId } =
-    useChatStore();
+  const { addUserMessage, setBotTyping, activeChatId } = useChatStore();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const autosize = useCallback(() => {
@@ -33,54 +31,48 @@ export default function MessageInput() {
       });
       return;
     }
+
+    const userData = localStorage.getItem("support-chat-user");
+    console.log("Fetching user for message:", userData);
+    if (!userData) {
+      toast({
+        title: "Not authenticated",
+        description: "Please log in to send messages.",
+        variant: "destructive",
+      });
+      return;
+    }
+    const user = JSON.parse(userData);
+
     setLoading(true);
     setValue("");
     addUserMessage(text);
     setBotTyping(true);
 
-    // Check for escalation keywords
-    const needsEscalation =
-      text.toLowerCase().includes("human") ||
-      text.toLowerCase().includes("support") ||
-      text.toLowerCase().includes("escalate");
-
     try {
+      console.log("Sending message:", { session_id: activeChatId, user_id: user.email, message: text });
       const res = await fetch("http://localhost:5001/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
           message: text,
           session_id: activeChatId,
-          user_id: "user_123",
+          user_id: user.email,
           org_id: "acme",
           channel: "web",
         }),
+        credentials: "include",
       });
-      if (!res.ok) throw new Error("Failed to send message");
-      const data = await res.json();
-
-      // Handle escalation
-      if (
-  needsEscalation ||
-  data.nlu?.intent_confidence < 0.3 &&
-  data.status === "open"
-) {
-  commitBotMessage("I'm sorry, I couldn't fully resolve your query. Let me escalate this to a human agent. Please wait a moment.", true);
-  await fetch("http://localhost:5001/chat", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      message: "Escalate to human agent",
-      session_id: activeChatId,
-      user_id: "user_123",
-      org_id: "acme",
-      channel: "web",
-    }),
-  });
-} else {
-        // Message:ack event will handle the response via SocketIO
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to send message");
       }
+      const data = await res.json();
+      console.log("Received response:", { session_id: activeChatId, response: data });
     } catch (e: any) {
+      console.error("Send message error:", e.message);
       toast({
         title: "Failed to send",
         description: e.message || "Try again.",

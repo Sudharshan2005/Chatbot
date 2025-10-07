@@ -1,18 +1,25 @@
-import { NextResponse } from "next/server"
+// app/api/user/route.ts
+import { NextRequest, NextResponse } from "next/server";
+import { User } from "@/models/User";
+import { connectDB } from "@/lib/mongoose";
 
-export async function GET() {
-  // In a real app, we'd validate the token and fetch user
-  return NextResponse.json({ user: null })
-}
+export async function GET(req: NextRequest) {
+  try {
+    await connectDB();
 
-export async function PATCH(req: Request) {
-  const patch = await req.json().catch(() => ({}))
-  // echo updated user back
-  const user = {
-    id: "demo",
-    email: "user@example.com",
-    displayName: patch.displayName || "User",
-    avatarUrl: patch.avatarUrl || null,
+    const userId = req.nextUrl.searchParams.get("user_id");
+    if (!userId) {
+      return NextResponse.json({ error: "Missing user_id" }, { status: 400 });
+    }
+
+    const user = await User.findOne({ email: userId });
+    if (!user) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+
+    return NextResponse.json({ user }, { status: 200 });
+  } catch (error: any) {
+    console.error("Error fetching user:", error);
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
-  return NextResponse.json({ user })
 }

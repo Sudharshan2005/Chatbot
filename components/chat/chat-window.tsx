@@ -9,21 +9,24 @@ import MessageInput from "./message-input";
 import { v4 as uuidv4 } from "uuid";
 
 export default function ChatWindow() {
-  const { activeChatId, setActiveChat, initializeSocket, chats, isBotTyping } =
-    useChatStore();
+  const { activeChatId, setActiveChat, chats, isBotTyping, loadHistoricalChats } = useChatStore();
   const containerRef = useRef<HTMLDivElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
-  // Initialize chat and socket
+  // Load historical chats and initialize chat
   useEffect(() => {
+    const userData = localStorage.getItem("support-chat-user");
+    console.log("ChatWindow checking user data:", userData);
+    if (userData && Object.keys(chats).length === 0) {
+      loadHistoricalChats();
+    }
     if (!activeChatId) {
       const newChatId = uuidv4();
       setActiveChat(newChatId);
-      initializeSocket(newChatId);
     }
-  }, [activeChatId, setActiveChat, initializeSocket]);
+  }, [chats, activeChatId, setActiveChat, loadHistoricalChats]);
 
-  // Smooth scroll to bottom on update
+  // Smooth scroll to bottom
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [chats[activeChatId]?.messages?.length, isBotTyping]);

@@ -1,102 +1,84 @@
-"use client"
+"use client";
 
-import type React from "react"
-import { useState } from "react"
-import Link from "next/link"
-import { useRouter } from "next/navigation"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { useToast } from "@/hooks/use-toast"
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { useToast } from "@/hooks/use-toast";
 
 export default function LoginPage() {
-  const router = useRouter()
-  const { toast } = useToast()
-  const [email, setEmail] = useState("")
-  const [password, setPassword] = useState("")
-  const [loading, setLoading] = useState(false)
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const router = useRouter();
+  const { toast } = useToast();
 
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault()
-
-    if (!email || !password) {
-      toast({
-        title: "Missing info",
-        description: "Email and password are required.",
-        variant: "destructive",
-      })
-      return
-    }
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setLoading(true);
 
     try {
-      setLoading(true)
-
       const res = await fetch("/api/auth/login", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({ email, password }),
-      })
+      });
 
       if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}))
-        throw new Error(errorData.message || "Login failed")
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || "Login failed");
       }
 
-      // You can optionally store tokens or session info here
-      // e.g. const { token } = await res.json()
-
-      toast({ title: "Welcome back!", description: "Logged in successfully." })
-      router.push("/")
+      const user = await res.json();
+      console.log("Setting user in localStorage:", user);
+      localStorage.setItem("support-chat-user", JSON.stringify(user));
+      console.log("localStorage after set:", localStorage.getItem("support-chat-user"));
+      router.push("/");
     } catch (e: any) {
+      console.error("Login error:", e.message);
       toast({
         title: "Login failed",
-        description: e.message || "Something went wrong. Try again.",
+        description: e.message || "Invalid credentials",
         variant: "destructive",
-      })
+      });
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
   return (
-    <main className="min-h-dvh grid place-items-center px-4">
-      <form onSubmit={onSubmit} className="w-full max-w-sm space-y-4 border rounded-lg p-6 bg-card">
-        <h2 className="text-lg font-medium">Log in</h2>
-
-        <div className="space-y-2">
+    <div className="flex min-h-screen items-center justify-center bg-background">
+      <form onSubmit={handleSubmit} className="w-full max-w-md space-y-4 p-6">
+        <h1 className="text-2xl font-bold">Login</h1>
+        <div>
           <Label htmlFor="email">Email</Label>
           <Input
             id="email"
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="you@example.com"
+            placeholder="Enter your email"
+            required
           />
         </div>
-
-        <div className="space-y-2">
+        <div>
           <Label htmlFor="password">Password</Label>
           <Input
             id="password"
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            placeholder="Enter your password"
+            required
           />
         </div>
-
-        <div className="flex items-center justify-between">
-          <Link href="#" className="text-sm underline text-muted-foreground">
-            Forgot password?
-          </Link>
-          <Link href="/signup" className="text-sm underline">
-            Sign up
-          </Link>
-        </div>
-
-        <Button className="w-full" disabled={loading}>
-          {loading ? "Logging in..." : "Log in"}
+        <Button type="submit" disabled={loading} className="w-full">
+          {loading ? "Logging in..." : "Login"}
         </Button>
       </form>
-    </main>
-  )
+    </div>
+  );
 }

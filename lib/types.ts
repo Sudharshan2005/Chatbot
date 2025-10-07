@@ -19,11 +19,11 @@ export type ChatSession = {
   updatedAt: number
 }
 
-export type User = {
-  id: string
-  email: string
-  displayName: string
-  avatarUrl?: string | null
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  initials: string; 
 }
 
 export type AuthState = {
