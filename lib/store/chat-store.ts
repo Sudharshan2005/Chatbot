@@ -10,6 +10,7 @@ interface ChatState {
   chats: Record<string, Chat>;
   isBotTyping: boolean;
   socket: Socket | null;
+  isInputDisabled: boolean;
   addUserMessage: (content: string) => void;
   commitBotMessage: (content: string, escalated?: boolean) => void;
   setBotTyping: (typing: boolean) => void;
@@ -18,6 +19,7 @@ interface ChatState {
   initializeSocket: (sessionId: string) => void;
   endSession: (sessionId: string) => Promise<void>;
   loadHistoricalChats: () => Promise<void>;
+  setInputDisabled: (disabled: boolean) => void;
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
@@ -25,6 +27,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   chats: {},
   isBotTyping: false,
   socket: null,
+  isInputDisabled: false,
   addUserMessage: (content) => {
     const chatId = get().activeChatId;
     if (!chatId) return;
@@ -44,7 +47,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
           [chatId]: {
             ...currentChat,
             messages: [...currentChat.messages, message],
-            title: isFirstMessage ? content : currentChat.title,
+            title: isFirstMessage ? messageId : currentChat.title,
           },
         },
       };
@@ -84,6 +87,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         [chatId]: state.chats[chatId] || { id: chatId, messages: [], title: "New chat" },
       },
       socket: null,
+      isInputDisabled: false, // Reset input disabled state on new chat
     }));
     get().initializeSocket(chatId);
   },
@@ -94,6 +98,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       return {
         chats: remainingChats,
         activeChatId: newActiveChatId,
+        isInputDisabled: false, // Reset input disabled state
       };
     });
     if (get().activeChatId === chatId) {
@@ -155,12 +160,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
     const user = JSON.parse(userData);
     try {
-      const res = await fetch(`http://localhost:5001/end_session?user_id=${user.id}`, {
+      const res = await fetch(`http://localhost:5001/end_session`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ session_id: sessionId, user_id: user.id }),
+        body: JSON.stringify({ session_id: sessionId, user_id: user.email }),
         credentials: "include",
       });
       if (!res.ok) {
@@ -168,7 +173,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         throw new Error(errorData.error || "Failed to end session");
       }
       console.log("Session ended:", sessionId);
-      set({ activeChatId: null, socket: null });
+      set({ activeChatId: null, socket: null, isInputDisabled: true });
     } catch (e: any) {
       console.error("End session error:", e.message);
     }
@@ -233,4 +238,5 @@ export const useChatStore = create<ChatState>((set, get) => ({
       console.error("Load historical chats error:", e.message);
     }
   },
+  setInputDisabled: (disabled) => set({ isInputDisabled: disabled }),
 }));

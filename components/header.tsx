@@ -26,9 +26,8 @@ export default function Header() {
         }
   
         const storedUser = JSON.parse(userData);
-        const userEmailData = storedUser.user;
         try {
-          const res = await fetch(`/api/user?user_id=${userEmailData.email}`);
+          const res = await fetch(`/api/user?user_id=${storedUser.email}`);
           if (!res.ok) {
             const err = await res.json().catch(() => ({}));
             throw new Error(err.message || "Failed to fetch profile");
@@ -40,7 +39,6 @@ export default function Header() {
           console.log("Updated localStorage with user:", localStorage.getItem("support-chat-user"));
         } catch (e: any) {
           console.error("Fetch profile error:", e.message);
-          // Do not clear localStorage here to prevent accidental data loss
           setUser(null);
         }
       };

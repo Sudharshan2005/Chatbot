@@ -36,9 +36,8 @@ export default function Sidebar() {
       }
 
       const storedUser = JSON.parse(userData);
-      const userEmailData = storedUser.user;
       try {
-        const res = await fetch(`/api/user?user_id=${userEmailData.email}`);
+        const res = await fetch(`/api/user?user_id=${storedUser.email}`);
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
           throw new Error(err.message || "Failed to fetch profile");

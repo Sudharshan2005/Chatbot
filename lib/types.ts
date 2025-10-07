@@ -5,6 +5,9 @@ export interface ChatMessage {
   timestamp?: string;
 }
 
+export type SessionStatus = "active" | "resolved"
+export type SessionPriority = "low" | "medium" | "high"
+
 export interface Chat {
   id: string;
   messages: ChatMessage[];

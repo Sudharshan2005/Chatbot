@@ -27,11 +27,13 @@ export default function ChatWindow() {
   }, [chats, activeChatId, setActiveChat, loadHistoricalChats]);
 
   // Smooth scroll to bottom
-  useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [chats[activeChatId]?.messages?.length, isBotTyping]);
-
   const messages = chats[activeChatId]?.messages || [];
+
+  useEffect(() => {
+  endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+}, [messages.length, isBotTyping, activeChatId]);
+
+
 
   const emptyState = useMemo(
     () => (
@@ -46,8 +48,9 @@ export default function ChatWindow() {
   );
 
   return (
-    <div className="flex-1 flex flex-col">
-      <div ref={containerRef} className="flex-1 overflow-y-auto px-4 md:px-6">
+    <>
+    <div className="flex-1 flex flex-col overflow-y-scroll">
+      <div ref={containerRef} className="flex-1 px-4 md:px-6">
         {messages.length === 0 ? (
           emptyState
         ) : (
@@ -60,11 +63,12 @@ export default function ChatWindow() {
           </div>
         )}
       </div>
-      <div className="border-t p-3">
+    </div>
+    <div className="border-t p-3">
         <div className="mx-auto max-w-3xl">
           <MessageInput />
         </div>
       </div>
-    </div>
+    </>
   );
 }
