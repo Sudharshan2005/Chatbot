@@ -182,7 +182,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
     const user = JSON.parse(userData);
     try {
-      const res = await fetch(`http://localhost:5001/user/sessions?user_id=${user.id}`, {
+      const res = await fetch(`http://localhost:5001/user/sessions?user_id=${user.email}`, {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
@@ -218,7 +218,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         });
 
         const firstMessage = rawMessages[0]?.user_message || "";
-        const title = rawMessages[0]?.message_id || firstMessage.slice(0, 30) + (firstMessage.length > 30 ? "..." : "") || `Chat from ${new Date(rawMessages[0]?.timestamp).toLocaleDateString()}`;
+        const title = firstMessage.slice(0, 30) + (firstMessage.length > 30 ? "..." : "") || `Chat from ${new Date(rawMessages[0]?.timestamp).toLocaleDateString()}`;
 
         newChats[sessionId] = {
           id: sessionId,
