@@ -28,21 +28,27 @@ export const useChatStore = create<ChatState>((set, get) => ({
   addUserMessage: (content) => {
     const chatId = get().activeChatId;
     if (!chatId) return;
+    const messageId = uuidv4();
     const message: ChatMessage = {
-      id: uuidv4(),
+      id: messageId,
       role: "user",
       content,
       timestamp: new Date().toISOString(),
     };
-    set((state) => ({
-      chats: {
-        ...state.chats,
-        [chatId]: {
-          ...state.chats[chatId],
-          messages: [...(state.chats[chatId]?.messages || []), message],
+    set((state) => {
+      const currentChat = state.chats[chatId] || { id: chatId, messages: [], title: "New chat" };
+      const isFirstMessage = currentChat.messages.length === 0;
+      return {
+        chats: {
+          ...state.chats,
+          [chatId]: {
+            ...currentChat,
+            messages: [...currentChat.messages, message],
+            title: isFirstMessage ? content : currentChat.title,
+          },
         },
-      },
-    }));
+      };
+    });
   },
   commitBotMessage: (content, escalated = false) => {
     const chatId = get().activeChatId;
@@ -103,7 +109,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
     const socket = io("http://localhost:5001", {
       withCredentials: true,
-      transports: ["websocket", "polling"], // Fallback to polling if WebSocket fails
+      transports: ["websocket", "polling"],
     });
     socket.on("connect", () => {
       console.log("Socket connected for session:", sessionId);
@@ -149,12 +155,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
     const user = JSON.parse(userData);
     try {
-      const res = await fetch(`http://localhost:5001/end_session?user_id=${user.email}`, {
+      const res = await fetch(`http://localhost:5001/end_session?user_id=${user.id}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ session_id: sessionId, user_id: user.email }),
+        body: JSON.stringify({ session_id: sessionId, user_id: user.id }),
         credentials: "include",
       });
       if (!res.ok) {
@@ -176,7 +182,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
     const user = JSON.parse(userData);
     try {
-      const res = await fetch(`http://localhost:5001/user/sessions?user_id=${user.email}`, {
+      const res = await fetch(`http://localhost:5001/user/sessions?user_id=${user.id}`, {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
@@ -212,7 +218,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         });
 
         const firstMessage = rawMessages[0]?.user_message || "";
-        const title = firstMessage.slice(0, 30) + (firstMessage.length > 30 ? "..." : "") || `Chat from ${new Date(rawMessages[0]?.timestamp).toLocaleDateString()}`;
+        const title = rawMessages[0]?.message_id || firstMessage.slice(0, 30) + (firstMessage.length > 30 ? "..." : "") || `Chat from ${new Date(rawMessages[0]?.timestamp).toLocaleDateString()}`;
 
         newChats[sessionId] = {
           id: sessionId,
