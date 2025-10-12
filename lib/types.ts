@@ -3,13 +3,31 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   timestamp?: string;
-  createdAt: number
-  isAgent: boolean;
-  user_message: string;
+  createdAt: number;
+  isAgent?: boolean;
+  user_message?: string;
+  response?: string;
+  waitingForResponse?: boolean;
+  isTemporary?: boolean;
 }
 
-export type SessionStatus = "active" | "resolved"
-export type SessionPriority = "low" | "medium" | "high"
+export interface RawMessage {
+  _id?: string;
+  message_id: string;
+  user_message?: string;
+  response?: string;
+  role?: 'user' | 'assistant';
+  content?: string;
+  timestamp: string;
+  createdAt?: number;
+  isAgent?: boolean;
+  waiting_for_agent_response?: boolean;
+  source?: string;
+  direction?: string;
+}
+
+export type SessionStatus = "active" | "resolved";
+export type SessionPriority = "low" | "medium" | "high";
 
 export interface Chat {
   id: string;
@@ -41,7 +59,7 @@ export interface ChatSession {
   userName: string | null;
   userEmail: string | null;
   tags: string[];
-  messages: ChatMessage[];
+  messages: RawMessage[]; // Changed to RawMessage[] to match backend
   createdAt: number;
   updatedAt: number;
   closedAt: number | null;
@@ -56,6 +74,6 @@ export interface User {
 }
 
 export type AuthState = {
-  token: string | null
-  user: User | null
+  token: string | null;
+  user: User | null;
 }

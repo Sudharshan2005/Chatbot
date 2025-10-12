@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useEffect, useRef } from "react";
-import type { ChatSession, ChatMessage } from "@/lib/types";
+import type { ChatSession, ChatMessage, RawMessage } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -9,7 +9,6 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import MessageBubble from "@/components/chat/message-bubble";
 import { useToast } from "@/hooks/use-toast";
 import { Mail, Eye, CheckCircle2, RotateCcw, Download, User, Send } from "lucide-react";
 import { createClient } from '@supabase/supabase-js';
@@ -45,6 +44,53 @@ function formatTime(ts?: number | null) {
   return d.toLocaleString();
 }
 
+// Helper function to convert raw messages to ChatMessage format
+function processRawMessages(rawMessages: RawMessage[]): ChatMessage[] {
+  const messages: ChatMessage[] = [];
+  
+  rawMessages.forEach((msg) => {
+    // Handle new format: user_message and response in same document
+    if (msg.user_message !== undefined) {
+      // Always show user message
+      messages.push({
+        id: msg.message_id,
+        role: "user" as const,
+        content: msg.user_message,
+        createdAt: new Date(msg.timestamp).getTime(),
+        isAgent: false,
+        user_message: msg.user_message,
+        response: msg.response,
+        waitingForResponse: !msg.response // Show waiting only if no response
+      });
+
+      // Show agent response if it exists
+      if (msg.response) {
+        messages.push({
+          id: `${msg.message_id}-response`,
+          role: "assistant" as const,
+          content: msg.response,
+          createdAt: new Date(msg.timestamp).getTime(),
+          isAgent: true,
+          user_message: msg.user_message
+        });
+      }
+    }
+    // Handle legacy format
+    else if (msg.content && msg.role) {
+      messages.push({
+        id: msg.message_id || msg._id || `msg-${Date.now()}`,
+        role: msg.role,
+        content: msg.content,
+        createdAt: msg.createdAt || new Date(msg.timestamp).getTime(),
+        isAgent: msg.isAgent || msg.role === 'assistant'
+      });
+    }
+  });
+  
+  // Sort by timestamp
+  return messages.sort((a, b) => a.createdAt - b.createdAt);
+}
+
 function AgentChatInterface({ 
   session, 
   agentId,
@@ -66,10 +112,21 @@ function AgentChatInterface({
   useEffect(() => {
     scrollToBottom();
   }, [session.messages]);
-  
+
+  // Process messages to handle the new data structure
+  const processedMessages = useMemo(() => {
+    return processRawMessages(session.messages);
+  }, [session.messages]);
+
+  // Check if there are any user messages waiting for response
+  const hasPendingMessages = useMemo(() => {
+    return processedMessages.some(msg => 
+      msg.role === "user" && !msg.response && msg.waitingForResponse
+    );
+  }, [processedMessages]);
 
   const sendMessage = async () => {
-    if (!message.trim() || isSending) return;
+    if (!message.trim() || isSending || !hasPendingMessages) return;
 
     setIsSending(true);
     try {
@@ -87,7 +144,8 @@ function AgentChatInterface({
       });
 
       if (!response.ok) {
-        throw new Error('Failed to send message');
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to send message');
       }
 
       const data = await response.json();
@@ -98,7 +156,8 @@ function AgentChatInterface({
         role: "assistant",
         content: message.trim(),
         createdAt: Date.now(),
-        isAgent: true
+        isAgent: true,
+        isTemporary: true
       };
 
       onNewMessage(tempMessage);
@@ -106,14 +165,14 @@ function AgentChatInterface({
       
       toast({
         title: "Message sent",
-        description: "Your message has been delivered to the user.",
+        description: "Your response has been delivered to the user.",
       });
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error sending message:', error);
       toast({
         title: "Failed to send message",
-        description: "Please try again.",
+        description: error.message || "Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -131,12 +190,12 @@ function AgentChatInterface({
   return (
     <div className="flex flex-col h-full">
       <div className="flex-1 space-y-4 overflow-auto max-h-[400px] p-4 border rounded-lg">
-        {session.messages.length === 0 ? (
+        {processedMessages.length === 0 ? (
           <div className="text-center text-muted-foreground py-8">
             No messages yet. Start the conversation!
           </div>
         ) : (
-          session.messages.map((msg) => (
+          processedMessages.map((msg) => (
             <div
               key={msg.id}
               className={cn(
@@ -148,16 +207,36 @@ function AgentChatInterface({
                 className={cn(
                   "max-w-[80%] rounded-lg px-4 py-2",
                   msg.role === "user"
-                    ? "bg-muted text-foreground"
+                    ? msg.waitingForResponse 
+                      ? "bg-yellow-100 border border-yellow-300 text-yellow-900" 
+                      : "bg-muted text-foreground"
+                    : msg.isTemporary
+                    ? "bg-primary/70 text-primary-foreground"
                     : "bg-primary text-primary-foreground"
                 )}
               >
                 <div className="text-sm">{msg.content}</div>
                 <div className={cn(
-                  "text-xs mt-1",
-                  msg.role === "user" ? "text-muted-foreground" : "text-primary-foreground/70"
+                  "text-xs mt-1 flex items-center gap-2",
+                  msg.role === "user" 
+                    ? msg.waitingForResponse 
+                      ? "text-yellow-700" 
+                      : "text-muted-foreground"
+                    : "text-primary-foreground/70"
                 )}>
-                  {msg.role === "user" ? "User" : "You"} • {formatTime(msg.createdAt)}
+                  <span>
+                    {msg.role === "user" ? "User" : "You"} • {formatTime(msg.createdAt)}
+                  </span>
+                  {msg.waitingForResponse && (
+                    <Badge variant="outline" className="text-xs bg-yellow-100 text-yellow-800">
+                      Waiting for response
+                    </Badge>
+                  )}
+                  {msg.isTemporary && (
+                    <Badge variant="outline" className="text-xs">
+                      Sending...
+                    </Badge>
+                  )}
                 </div>
               </div>
             </div>
@@ -171,18 +250,29 @@ function AgentChatInterface({
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           onKeyPress={handleKeyPress}
-          placeholder="Type your message..."
-          disabled={isSending}
+          placeholder={
+            hasPendingMessages 
+              ? "Respond to the user's message..." 
+              : "Waiting for user message..."
+          }
+          disabled={isSending || !hasPendingMessages}
           className="flex-1"
         />
         <Button 
           onClick={sendMessage} 
-          disabled={!message.trim() || isSending}
+          disabled={!message.trim() || isSending || !hasPendingMessages}
           size="icon"
+          title={!hasPendingMessages ? "No user messages waiting for response" : undefined}
         >
           <Send className="h-4 w-4" />
         </Button>
       </div>
+      
+      {!hasPendingMessages && processedMessages.length > 0 && (
+        <div className="text-xs text-muted-foreground text-center mt-2">
+          All user messages have been responded to. Waiting for new user message...
+        </div>
+      )}
     </div>
   );
 }
@@ -224,7 +314,6 @@ export default function AgentDashboard() {
 
       newSocket.on('agent_message_sent', (data) => {
         console.log('Agent message confirmed:', data);
-        // Replace temporary message with confirmed one
         handleAgentMessageConfirmed(data);
       });
 
@@ -241,18 +330,15 @@ export default function AgentDashboard() {
   }, [agentId]);
 
   const handleNewUserMessage = (messageData: any) => {
-    const newMessage: ChatMessage = {
-      id: messageData.message_id,
-      role: "user",
-      content: messageData.user_message,
-      createdAt: new Date(messageData.timestamp).getTime(),
-    };
-
+    console.log('Processing new user message:', messageData);
+    
+    // Update the specific session with the new message
     setSessions(prev => prev.map(session => {
       if (session.id === messageData.session_id) {
+        const updatedMessages = [...session.messages, messageData];
         return {
           ...session,
-          messages: [...session.messages, newMessage],
+          messages: updatedMessages,
           updatedAt: Date.now()
         };
       }
@@ -263,59 +349,90 @@ export default function AgentDashboard() {
     if (selectedSession?.id === messageData.session_id) {
       setSelectedSession(prev => prev ? {
         ...prev,
-        messages: [...prev.messages, newMessage],
+        messages: [...prev.messages, messageData],
         updatedAt: Date.now()
       } : null);
     }
 
     // Show notification for new message
     if (selectedSession?.id !== messageData.session_id) {
+      const sessionTitle = sessions.find(s => s.id === messageData.session_id)?.title || "Unknown session";
       toast({
         title: "New message",
-        description: `New message from user in session: ${messageData.session_id}`,
+        description: `New message from user in: ${sessionTitle}`,
+        action: (
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={() => {
+              const session = sessions.find(s => s.id === messageData.session_id);
+              if (session) setSelectedSession(session);
+            }}
+          >
+            View
+          </Button>
+        ),
       });
     }
   };
 
   const handleAgentMessageConfirmed = (messageData: any) => {
-    const confirmedMessage: ChatMessage = {
-      id: messageData.message_id,
-      role: "assistant",
-      content: messageData.response,
-      createdAt: new Date(messageData.timestamp).getTime(),
-      isAgent: true
-    };
-
+    console.log('Agent message confirmed:', messageData);
+    
+    // Update the session with the confirmed agent response
     setSessions(prev => prev.map(session => {
       if (session.id === messageData.session_id) {
-        // Remove temporary message and add confirmed one
-        const filteredMessages = session.messages.filter(msg => 
-          !msg.id.startsWith('temp-')
+        // Find and update the message that was responded to
+        const updatedMessages = session.messages.map((msg: RawMessage) => 
+          msg.message_id === messageData.message_id ? messageData : msg
         );
+        
         return {
           ...session,
-          messages: [...filteredMessages, confirmedMessage],
+          messages: updatedMessages,
           updatedAt: Date.now()
         };
       }
       return session;
     }));
 
+    // Update selected session if it's the current one
     if (selectedSession?.id === messageData.session_id) {
       setSelectedSession(prev => prev ? {
         ...prev,
-        messages: prev.messages.filter(msg => !msg.id.startsWith('temp-')).concat(confirmedMessage),
+        messages: prev.messages.map((msg: RawMessage) => 
+          msg.message_id === messageData.message_id ? messageData : msg
+        ),
         updatedAt: Date.now()
       } : null);
     }
   };
 
   const handleNewAgentMessage = (message: ChatMessage) => {
-    if (selectedSession) {
-      setSelectedSession(prev => prev ? {
-        ...prev,
-        messages: [...prev.messages, message]
-      } : null);
+    // Temporary messages are handled locally in AgentChatInterface
+    // We don't need to update the session state here as it will be refreshed
+  };
+
+  const fetchSessionMessages = async (sessionId: string) => {
+    try {
+      const res = await fetch(`http://localhost:5001/agent/sessions?agent_id=${agentId}`, {
+        method: "GET",
+        credentials: "include",
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const updatedSessions = data.sessions || [];
+        setSessions(updatedSessions);
+        
+        // Update selected session if it's the current one
+        const updatedSession = updatedSessions.find((s: ChatSession) => s.id === sessionId);
+        if (updatedSession && selectedSession?.id === sessionId) {
+          setSelectedSession(updatedSession);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching session messages:', error);
     }
   };
 
@@ -334,13 +451,16 @@ export default function AgentDashboard() {
 
       if (res.ok) {
         const data = await res.json();
-        console.log(data);
+        console.log("Fetched sessions:", data);
         setSessions(data.sessions || []);
+      } else {
+        throw new Error('Failed to fetch sessions');
       }
     } catch (error) {
       console.error("Failed to fetch agent sessions:", error);
       toast({
         title: "Failed to load sessions",
+        description: "Please check your connection and try again.",
         variant: "destructive",
       });
     } finally {
@@ -379,6 +499,7 @@ export default function AgentDashboard() {
 
       toast({ title: "Session resolved" });
     } catch (error) {
+      console.error('Error resolving session:', error);
       toast({
         title: "Failed to resolve session",
         variant: "destructive",
@@ -417,6 +538,7 @@ export default function AgentDashboard() {
 
       toast({ title: "Session reopened" });
     } catch (error) {
+      console.error('Error reopening session:', error);
       toast({
         title: "Failed to reopen session",
         variant: "destructive",
@@ -430,8 +552,19 @@ export default function AgentDashboard() {
   const resolvedSessions = useMemo(() => 
     sessions.filter(s => s.status === "resolved"), [sessions]);
 
+  // Process messages for resolved sessions display
+  const getResolvedSessionMessages = (session: ChatSession) => {
+    return processRawMessages(session.messages);
+  };
+
   if (loading) {
-    return <div className="flex justify-center p-8">Loading...</div>;
+    return (
+      <main className="mx-auto max-w-7xl space-y-6 p-4 md:p-6">
+        <div className="flex items-center justify-center h-64">
+          <div className="text-lg">Loading sessions...</div>
+        </div>
+      </main>
+    );
   }
 
   return (
@@ -525,6 +658,13 @@ export default function AgentDashboard() {
                     </TableCell>
                   </TableRow>
                 ))}
+                {activeSessions.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                      No active sessions assigned to you.
+                    </TableCell>
+                  </TableRow>
+                )}
               </TableBody>
             </Table>
           </div>
@@ -570,6 +710,13 @@ export default function AgentDashboard() {
                     </TableCell>
                   </TableRow>
                 ))}
+                {resolvedSessions.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                      No resolved sessions.
+                    </TableCell>
+                  </TableRow>
+                )}
               </TableBody>
             </Table>
           </div>
@@ -614,28 +761,28 @@ export default function AgentDashboard() {
                 <div className="flex flex-col rounded-md border p-4">
                   <div className="mb-4 text-sm font-medium">Chat History (Resolved)</div>
                   <div className="space-y-4 max-h-[400px] overflow-auto">
-                    {selectedSession.messages.map((m) => (
+                    {getResolvedSessionMessages(selectedSession).map((msg) => (
                       <div
-                        key={m.id}
+                        key={msg.id}
                         className={cn(
                           "flex",
-                          m.role === "user" ? "justify-start" : "justify-end"
+                          msg.role === "user" ? "justify-start" : "justify-end"
                         )}
                       >
                         <div
                           className={cn(
                             "max-w-[80%] rounded-lg px-4 py-2",
-                            m.role === "user"
+                            msg.role === "user"
                               ? "bg-muted text-foreground"
                               : "bg-primary text-primary-foreground"
                           )}
                         >
-                          <div className="text-sm">{m.content}</div>
+                          <div className="text-sm">{msg.content}</div>
                           <div className={cn(
                             "text-xs mt-1",
-                            m.role === "user" ? "text-muted-foreground" : "text-primary-foreground/70"
+                            msg.role === "user" ? "text-muted-foreground" : "text-primary-foreground/70"
                           )}>
-                            {m.role === "user" ? "User" : "Agent"} • {formatTime(m.createdAt)}
+                            {msg.role === "user" ? "User" : "Agent"} • {formatTime(msg.createdAt)}
                           </div>
                         </div>
                       </div>
