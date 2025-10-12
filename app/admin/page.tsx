@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useEffect } from "react";
 import Link from "next/link";
-import type { ChatSession } from "@/lib/types";
+import type { ChatSession, Agent } from "@/lib/types"; // Import Agent type
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -14,7 +14,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import MessageBubble from "@/components/chat/message-bubble";
 import { useToast } from "@/hooks/use-toast";
-import { Mail, Eye, MoreHorizontal, CheckCircle2, RotateCcw, XCircle, Download } from "lucide-react";
+import { Mail, Eye, MoreHorizontal, CheckCircle2, RotateCcw, XCircle, Download, User, UserCheck } from "lucide-react"; // Added User and UserCheck icons
 import { cn } from "@/lib/utils";
 import { createClient } from '@supabase/supabase-js';
 
@@ -53,17 +53,23 @@ function SessionDetails({
   onOpenChange,
   session,
   onUpdateSession,
+  agents,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   session: ChatSession;
   onUpdateSession: (updatedSession: ChatSession) => void;
+  agents: Agent[];
 }) {
   const { toast } = useToast();
-  const [assignee, setAssignee] = useState(session.assignee ?? "");
+  const [selectedAgent, setSelectedAgent] = useState(session.assignee ?? ""); // Changed from assignee to selectedAgent
   const [userEmail, setUserEmail] = useState(session.userEmail ?? "");
   const [userName, setUserName] = useState(session.userName ?? "");
   const [newTag, setNewTag] = useState("");
+
+  const availableAgents = agents.filter(agent => 
+    agent.status === "available" && agent.current_sessions.length < agent.max_sessions
+  );
 
   async function setSessionStatus(sessionId: string, status: ChatSession["status"]) {
     try {
@@ -85,7 +91,18 @@ function SessionDetails({
 
         if (error) throw error;
       } else {
-        // Mark as resolved in Supabase
+        // When closing session, remove from agent's current_sessions
+        if (session.assignee) {
+          await fetch('http://localhost:5001/agent/remove-session', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              agent_id: session.assignee,
+              session_id: sessionId
+            })
+          });
+        }
+
         const { data, error } = await supabase
           .from('tickets')
           .update({ 
@@ -113,11 +130,59 @@ function SessionDetails({
     }
   }
 
+  async function assignAgent(sessionId: string, agentId: string) {
+    try {
+      if (!agentId) return;
+      console.log(agentId, sessionId)
+
+      // Update Supabase ticket with assigned agent
+      const { error: supabaseError } = await supabase
+        .from('tickets')
+        .update({ 
+          escalatedTo: agentId,
+          updatedAt: new Date().toISOString()
+        })
+        .eq('sessionId', sessionId);
+
+      if (supabaseError) throw supabaseError;
+
+      // Add session to agent's current_sessions in MongoDB
+      const agentResponse = await fetch('http://localhost:5001/agent/assign-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          agent_id: agentId,
+          session_id: sessionId
+        })
+      });
+
+      if (!agentResponse.ok) {
+        throw new Error('Failed to update agent assignment');
+      }
+
+      const assignedAgent = agents.find(a => a.user_id === agentId);
+
+      const updatedSession = { 
+        ...session, 
+        assignee: agentId,
+        assigneeName: assignedAgent?.name || agentId
+      };
+      
+      onUpdateSession(updatedSession);
+      toast({ title: `Session assigned to ${assignedAgent?.name || agentId}` });
+    } catch (e: any) {
+      toast({
+        title: "Failed to assign agent",
+        description: e.message || "Try again.",
+        variant: "destructive",
+      });
+    }
+  }
+
   async function updateSessionMeta(sessionId: string, meta: Partial<ChatSession>) {
     try {
       const updateData: any = {};
       if ("priority" in meta) updateData.priority = meta.priority;
-      if ("assignee" in meta) updateData.escalatedTo = meta.assignee;
       if ("userEmail" in meta) updateData.userId = meta.userEmail;
       if ("userName" in meta) updateData.userName = meta.userName;
 
@@ -329,24 +394,50 @@ function SessionDetails({
             </div>
 
             <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Assignee</span>
+              <span className="text-sm text-muted-foreground">Assign Agent</span>
               <div className="flex gap-2">
-                <Input
-                  value={assignee}
-                  placeholder="Agent name"
-                  onChange={(e) => setAssignee(e.target.value)}
-                  className="w-40"
-                />
+                <Select value={selectedAgent} onValueChange={setSelectedAgent}>
+                  <SelectTrigger className="w-48">
+                    <SelectValue placeholder="Select agent" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="default">Unassigned</SelectItem>
+                    {availableAgents.map((agent) => (
+                      <SelectItem key={agent.user_id} value={agent.user_id}>
+                        <div className="flex items-center gap-2">
+                          <User className="h-4 w-4" />
+                          <span>{agent.name}</span>
+                          <Badge variant="outline" className="ml-2">
+                            {agent.current_sessions.length}/{agent.max_sessions}
+                          </Badge>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <Button
                   size="sm"
-                  onClick={() => {
-                    updateSessionMeta(session.id, { assignee: assignee || null });
-                  }}
+                  onClick={() => assignAgent(session.id, selectedAgent)}
+                  disabled={!selectedAgent}
+                  className="cursor-pointer"
                 >
-                  Save
+                  <UserCheck className="mr-2 h-4 w-4" />
+                  Assign
                 </Button>
               </div>
             </div>
+
+            {session.assignee && (
+              <div className="flex items-center justify-between p-2 bg-muted rounded">
+                <span className="text-sm text-muted-foreground">Assigned to:</span>
+                <div className="flex items-center gap-2">
+                  <User className="h-4 w-4" />
+                  <span className="text-sm font-medium">
+                    {session.assigneeName || session.assignee}
+                  </span>
+                </div>
+              </div>
+            )}
 
             <div className="space-y-2">
               <span className="text-sm text-muted-foreground">User</span>
@@ -577,7 +668,7 @@ function SessionsTable({
               <TableCell>
                 <PriorityBadge priority={s.priority} />
               </TableCell>
-              <TableCell className="text-sm">{s.assignee || "-"}</TableCell>
+              <TableCell className="text-sm">{s.assigneeName || s.assignee || "-"}</TableCell>
               <TableCell className="max-w-48">
                 <div className="flex flex-wrap gap-1">
                   {s.tags.slice(0, 4).map((t) => (
@@ -650,6 +741,7 @@ function SessionsTable({
 
 export default function AdminPage() {
   const [chats, setChats] = useState<ChatSession[]>([]);
+  const [agents, setAgents] = useState<Agent[]>([]);
   const [tab, setTab] = useState<"active" | "resolved" | "users">("active");
   const [query, setQuery] = useState("");
   const [priorityFilter, setPriorityFilter] = useState<"all" | "low" | "medium" | "high">("all");
@@ -658,10 +750,21 @@ export default function AdminPage() {
   const { toast } = useToast();
 
   useEffect(() => {
-    async function fetchAllSessions() {
+    async function fetchAllData() {
       try {
         setLoading(true);
         
+        // Fetch agents
+        const agentsRes = await fetch('http://localhost:5001/admin/agents', {
+          method: "GET",
+          credentials: "include",
+        });
+
+        if (agentsRes.ok) {
+          const agentsData = await agentsRes.json();
+          setAgents(agentsData.agents || []);
+        }
+
         // Fetch all tickets from Supabase
         const { data: tickets, error: ticketsError } = await supabase
           .from('tickets')
@@ -757,6 +860,7 @@ export default function AdminPage() {
             // Determine status: active only if in Supabase with isActive: true
             const isActive = activeTicketSessionIds.has(sessionId);
             const supabaseTicket = tickets?.find(t => t.sessionId === sessionId);
+            const assignedAgent = agents.find(a => a.user_id === supabaseTicket?.escalatedTo); // Fixed this line
             
             return {
               id: sessionId,
@@ -764,6 +868,7 @@ export default function AdminPage() {
               status: isActive ? "active" : "resolved",
               priority: supabaseTicket?.priority || "low",
               assignee: supabaseTicket?.escalatedTo || null,
+              assigneeName: assignedAgent?.name || null, // Fixed this line
               userName: supabaseTicket?.userName || session.user_id || null,
               userEmail: supabaseTicket?.userId || session.user_id || null,
               tags: supabaseTicket?.tags || [],
@@ -788,7 +893,7 @@ export default function AdminPage() {
       }
     }
 
-    fetchAllSessions();
+    fetchAllData();
   }, [toast]);
 
   const stats = useMemo(() => {
@@ -1007,6 +1112,7 @@ export default function AdminPage() {
           onOpenChange={(v) => !v && setSelected(null)}
           session={selected}
           onUpdateSession={onUpdateSession}
+          agents={agents}
         />
       )}
     </main>

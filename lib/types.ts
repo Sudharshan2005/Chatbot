@@ -16,21 +16,34 @@ export interface Chat {
   escalated?: boolean;
 }
 
-export type ChatSession = {
-  id: string
-  title: string
-  messages: ChatMessage[]
-  createdAt: number
-  updatedAt: number
-  status: SessionStatus
-  isActive?: true | false
-  priority: SessionPriority
-  tags: string[]
-  assignee?: string | null
-  userEmail?: string | null
-  userName?: string | null
-  closedAt?: number | null
-  last_updated: number
+export interface Agent {
+  _id: string;
+  user_id: string;
+  name: string;
+  role: string;
+  status: 'available' | 'busy' | 'offline';
+  current_sessions: string[];
+  max_sessions: number;
+  skills: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ChatSession {
+  id: string;
+  title: string;
+  status: 'active' | 'resolved';
+  priority: 'low' | 'medium' | 'high';
+  assignee: string | null;
+  assigneeName: string | null;
+  userName: string | null;
+  userEmail: string | null;
+  tags: string[];
+  messages: ChatMessage[];
+  createdAt: number;
+  updatedAt: number;
+  closedAt: number | null;
+  last_updated: number;
 }
 
 export interface User {
