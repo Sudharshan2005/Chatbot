@@ -1,27 +1,35 @@
-"use client"
+"use client";
 
-import { useMemo, useState } from "react"
-import Link from "next/link"
-import { useChatStore } from "@/lib/store/chat-store"
-import type { ChatSession } from "@/lib/types"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Input } from "@/components/ui/input"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import MessageBubble from "@/components/chat/message-bubble"
-import { useToast } from "@/hooks/use-toast"
-import { Mail, Eye, MoreHorizontal, CheckCircle2, RotateCcw, XCircle, Download } from "lucide-react"
-import { cn } from "@/lib/utils"
+import { useMemo, useState, useEffect } from "react";
+import Link from "next/link";
+import type { ChatSession } from "@/lib/types";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import MessageBubble from "@/components/chat/message-bubble";
+import { useToast } from "@/hooks/use-toast";
+import { Mail, Eye, MoreHorizontal, CheckCircle2, RotateCcw, XCircle, Download } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { createClient } from '@supabase/supabase-js';
+
+// Initialize Supabase client
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!, 
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 function StatusBadge({ status }: { status: ChatSession["status"] }) {
   return (
-    <Badge variant={status === "active" ? "default" : "secondary"}>{status === "active" ? "Active" : "Resolved"}</Badge>
-  )
+    <Badge variant={status === "active" ? "default" : "secondary"}>
+      {status === "active" ? "Active" : "Resolved"}
+    </Badge>
+  );
 }
 
 function PriorityBadge({ priority }: { priority: ChatSession["priority"] }) {
@@ -30,34 +38,219 @@ function PriorityBadge({ priority }: { priority: ChatSession["priority"] }) {
       ? "bg-destructive text-destructive-foreground"
       : priority === "medium"
         ? "bg-primary text-primary-foreground"
-        : "bg-muted text-muted-foreground"
-  return <Badge className={cn(tone, "capitalize")}>{priority}</Badge>
+        : "bg-muted text-muted-foreground";
+  return <Badge className={cn(tone, "capitalize")}>{priority}</Badge>;
 }
 
 function formatTime(ts?: number | null) {
-  if (!ts) return "-"
-  const d = new Date(ts)
-  return d.toLocaleString()
+  if (!ts) return "-";
+  const d = new Date(ts);
+  return d.toLocaleString();
 }
 
 function SessionDetails({
   open,
   onOpenChange,
   session,
+  onUpdateSession,
 }: {
-  open: boolean
-  onOpenChange: (v: boolean) => void
-  session: ChatSession
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  session: ChatSession;
+  onUpdateSession: (updatedSession: ChatSession) => void;
 }) {
-  const { toast } = useToast()
-  const setStatus = useChatStore((s) => s.setSessionStatus)
-  const updateMeta = useChatStore((s) => s.updateSessionMeta)
-  const addTag = useChatStore((s) => s.addTag)
-  const removeTag = useChatStore((s) => s.removeTag)
-  const [assignee, setAssignee] = useState(session.assignee ?? "")
-  const [userEmail, setUserEmail] = useState(session.userEmail ?? "")
-  const [userName, setUserName] = useState(session.userName ?? "")
-  const [newTag, setNewTag] = useState("")
+  const { toast } = useToast();
+  const [assignee, setAssignee] = useState(session.assignee ?? "");
+  const [userEmail, setUserEmail] = useState(session.userEmail ?? "");
+  const [userName, setUserName] = useState(session.userName ?? "");
+  const [newTag, setNewTag] = useState("");
+
+  async function setSessionStatus(sessionId: string, status: ChatSession["status"]) {
+    try {
+      if (status === "active") {
+        // Create or update ticket in Supabase
+        const { data, error } = await supabase
+          .from('tickets')
+          .upsert({
+            sessionId: sessionId,
+            isActive: true,
+            userId: session.userEmail,
+            userName: session.userName,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          }, {
+            onConflict: 'sessionId',
+            ignoreDuplicates: false
+          });
+
+        if (error) throw error;
+      } else {
+        // Mark as resolved in Supabase
+        const { data, error } = await supabase
+          .from('tickets')
+          .update({ 
+            isActive: false,
+            updatedAt: new Date().toISOString()
+          })
+          .eq('sessionId', sessionId);
+
+        if (error) throw error;
+      }
+
+      const updatedSession = { 
+        ...session, 
+        status,
+        closedAt: status === "resolved" ? Date.now() : null
+      };
+      onUpdateSession(updatedSession);
+      toast({ title: `Session ${status === "active" ? "reopened" : "closed"}` });
+    } catch (e: any) {
+      toast({
+        title: "Failed to update status",
+        description: e.message || "Try again.",
+        variant: "destructive",
+      });
+    }
+  }
+
+  async function updateSessionMeta(sessionId: string, meta: Partial<ChatSession>) {
+    try {
+      const updateData: any = {};
+      if ("priority" in meta) updateData.priority = meta.priority;
+      if ("assignee" in meta) updateData.escalatedTo = meta.assignee;
+      if ("userEmail" in meta) updateData.userId = meta.userEmail;
+      if ("userName" in meta) updateData.userName = meta.userName;
+
+      // Check if ticket exists in Supabase
+      const { data: existingTicket } = await supabase
+        .from('tickets')
+        .select('sessionId')
+        .eq('sessionId', sessionId)
+        .single();
+
+      if (existingTicket) {
+        // Update existing ticket
+        const { error } = await supabase
+          .from('tickets')
+          .update({
+            ...updateData,
+            updatedAt: new Date().toISOString()
+          })
+          .eq('sessionId', sessionId);
+
+        if (error) throw error;
+      } else {
+        // Create new ticket if it doesn't exist
+        const { error } = await supabase
+          .from('tickets')
+          .insert({
+            sessionId: sessionId,
+            isActive: true,
+            userId: session.userEmail,
+            userName: session.userName,
+            ...updateData,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          });
+
+        if (error) throw error;
+      }
+
+      const updatedSession = { ...session, ...meta, status: "active" };
+      onUpdateSession(updatedSession);
+      toast({ title: "Session updated" });
+    } catch (e: any) {
+      toast({
+        title: "Failed to update session",
+        description: e.message || "Try again.",
+        variant: "destructive",
+      });
+    }
+  }
+
+  async function addTag(sessionId: string, tag: string) {
+    try {
+      // Check if ticket exists
+      const { data: existingTicket } = await supabase
+        .from('tickets')
+        .select('tags, sessionId')
+        .eq('sessionId', sessionId)
+        .single();
+
+      const newTags = [...(existingTicket?.tags || []), tag];
+      
+      if (existingTicket) {
+        // Update existing ticket
+        const { error } = await supabase
+          .from('tickets')
+          .update({ 
+            tags: newTags,
+            updatedAt: new Date().toISOString()
+          })
+          .eq('sessionId', sessionId);
+
+        if (error) throw error;
+      } else {
+        // Create new ticket with tags
+        const { error } = await supabase
+          .from('tickets')
+          .insert({
+            sessionId: sessionId,
+            isActive: true,
+            userId: session.userEmail,
+            userName: session.userName,
+            tags: newTags,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          });
+
+        if (error) throw error;
+      }
+
+      const updatedSession = { ...session, tags: newTags, status: "active" };
+      onUpdateSession(updatedSession);
+      toast({ title: "Tag added" });
+    } catch (e: any) {
+      toast({
+        title: "Failed to add tag",
+        description: e.message || "Try again.",
+        variant: "destructive",
+      });
+    }
+  }
+
+  async function removeTag(sessionId: string, tag: string) {
+    try {
+      const { data: ticket, error: fetchError } = await supabase
+        .from('tickets')
+        .select('tags')
+        .eq('sessionId', sessionId)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      const newTags = (ticket.tags || []).filter(t => t !== tag);
+      const { error } = await supabase
+        .from('tickets')
+        .update({ 
+          tags: newTags,
+          updatedAt: new Date().toISOString()
+        })
+        .eq('sessionId', sessionId);
+
+      if (error) throw error;
+
+      const updatedSession = { ...session, tags: newTags };
+      onUpdateSession(updatedSession);
+      toast({ title: "Tag removed" });
+    } catch (e: any) {
+      toast({
+        title: "Failed to remove tag",
+        description: e.message || "Try again.",
+        variant: "destructive",
+      });
+    }
+  }
 
   function exportTranscript() {
     const lines = [
@@ -72,24 +265,24 @@ function SessionDetails({
       "",
       "Transcript:",
       ...session.messages.map((m) => `[${new Date(m.createdAt).toISOString()}] ${m.role.toUpperCase()}: ${m.content}`),
-    ].join("\n")
-    const blob = new Blob([lines], { type: "text/plain;charset=utf-8" })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = `session-${session.id}.txt`
-    a.click()
-    URL.revokeObjectURL(url)
+    ].join("\n");
+    const blob = new Blob([lines], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `session-${session.id}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl">
+      <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-balance">{session.title || "Session"}</DialogTitle>
         </DialogHeader>
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="space-y-3">
+        <div className="grid gap-6 md:grid-cols-2">
+          <div className="space-y-4">
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">Status</span>
               <div className="flex items-center gap-2">
@@ -98,7 +291,7 @@ function SessionDetails({
                   <Button
                     size="sm"
                     variant="secondary"
-                    onClick={() => setStatus(session.id, "resolved")}
+                    onClick={() => setSessionStatus(session.id, "resolved")}
                     aria-label="Close session"
                   >
                     <CheckCircle2 className="mr-2 h-4 w-4" />
@@ -108,7 +301,7 @@ function SessionDetails({
                   <Button
                     size="sm"
                     variant="secondary"
-                    onClick={() => setStatus(session.id, "active")}
+                    onClick={() => setSessionStatus(session.id, "active")}
                     aria-label="Reopen session"
                   >
                     <RotateCcw className="mr-2 h-4 w-4" />
@@ -120,7 +313,10 @@ function SessionDetails({
 
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">Priority</span>
-              <Select value={session.priority} onValueChange={(v: any) => updateMeta(session.id, { priority: v })}>
+              <Select
+                value={session.priority}
+                onValueChange={(v: any) => updateSessionMeta(session.id, { priority: v })}
+              >
                 <SelectTrigger className="w-32">
                   <SelectValue />
                 </SelectTrigger>
@@ -144,8 +340,7 @@ function SessionDetails({
                 <Button
                   size="sm"
                   onClick={() => {
-                    updateMeta(session.id, { assignee: assignee || null })
-                    toast({ title: "Assignee updated" })
+                    updateSessionMeta(session.id, { assignee: assignee || null });
                   }}
                 >
                   Save
@@ -156,7 +351,11 @@ function SessionDetails({
             <div className="space-y-2">
               <span className="text-sm text-muted-foreground">User</span>
               <div className="grid grid-cols-1 gap-2">
-                <Input value={userName} placeholder="User name" onChange={(e) => setUserName(e.target.value)} />
+                <Input
+                  value={userName}
+                  placeholder="User name"
+                  onChange={(e) => setUserName(e.target.value)}
+                />
                 <div className="flex gap-2">
                   <Input
                     value={userEmail}
@@ -164,7 +363,10 @@ function SessionDetails({
                     onChange={(e) => setUserEmail(e.target.value)}
                   />
                   <Button asChild variant="secondary" aria-label="Contact user">
-                    <a href={userEmail ? `mailto:${userEmail}` : "#"} onClick={(e) => !userEmail && e.preventDefault()}>
+                    <a
+                      href={userEmail ? `mailto:${userEmail}` : "#"}
+                      onClick={(e) => !userEmail && e.preventDefault()}
+                    >
                       <Mail className="mr-2 h-4 w-4" />
                       Email
                     </a>
@@ -173,8 +375,7 @@ function SessionDetails({
                 <Button
                   size="sm"
                   onClick={() => {
-                    updateMeta(session.id, { userEmail: userEmail || null, userName: userName || null })
-                    toast({ title: "User info saved" })
+                    updateSessionMeta(session.id, { userEmail: userEmail || null, userName: userName || null });
                   }}
                 >
                   Save user
@@ -199,14 +400,18 @@ function SessionDetails({
                 ))}
               </div>
               <div className="flex gap-2">
-                <Input value={newTag} placeholder="Add tag" onChange={(e) => setNewTag(e.target.value)} />
+                <Input
+                  value={newTag}
+                  placeholder="Add tag"
+                  onChange={(e) => setNewTag(e.target.value)}
+                />
                 <Button
                   size="sm"
                   onClick={() => {
-                    const tag = newTag.trim()
-                    if (!tag) return
-                    addTag(session.id, tag)
-                    setNewTag("")
+                    const tag = newTag.trim();
+                    if (!tag) return;
+                    addTag(session.id, tag);
+                    setNewTag("");
                   }}
                 >
                   Add
@@ -216,7 +421,12 @@ function SessionDetails({
 
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">Transcript</span>
-              <Button size="sm" variant="secondary" onClick={exportTranscript} aria-label="Export transcript">
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={exportTranscript}
+                aria-label="Export transcript"
+              >
                 <Download className="mr-2 h-4 w-4" />
                 Export
               </Button>
@@ -236,11 +446,11 @@ function SessionDetails({
             </div>
           </div>
 
-          <div className="flex min-h-64 flex-col rounded-md border p-3">
-            <div className="mb-2 text-sm font-medium">Messages</div>
-            <div className="flex-1 space-y-3 overflow-auto pr-1">
+          <div className="flex flex-col rounded-md border p-4">
+            <div className="mb-4 text-sm font-medium">Messages ({session.messages.length})</div>
+            <div className="flex-1 space-y-4 overflow-auto max-h-[500px] pr-2">
               {session.messages.length === 0 ? (
-                <div className="text-sm text-muted-foreground">No messages yet.</div>
+                <div className="text-sm text-muted-foreground text-center py-8">No messages found.</div>
               ) : (
                 session.messages.map((m) => <MessageBubble key={m.id} message={m} />)
               )}
@@ -249,18 +459,94 @@ function SessionDetails({
         </div>
       </DialogContent>
     </Dialog>
-  )
+  );
 }
 
 function SessionsTable({
   sessions,
   onOpenSession,
+  onDeleteSession,
+  onUpdateSession,
 }: {
-  sessions: ChatSession[]
-  onOpenSession: (s: ChatSession) => void
+  sessions: ChatSession[];
+  onOpenSession: (s: ChatSession) => void;
+  onDeleteSession: (sessionId: string) => void;
+  onUpdateSession: (updatedSession: ChatSession) => void;
 }) {
-  const setStatus = useChatStore((s) => s.setSessionStatus)
-  const deleteChat = useChatStore((s) => s.deleteChat)
+  const { toast } = useToast();
+
+  async function setSessionStatus(sessionId: string, status: ChatSession["status"]) {
+    try {
+      if (status === "active") {
+        // Create or update ticket in Supabase
+        const { data, error } = await supabase
+          .from('tickets')
+          .upsert({
+            sessionId: sessionId,
+            isActive: true,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          }, {
+            onConflict: 'sessionId',
+            ignoreDuplicates: false
+          });
+
+        if (error) throw error;
+      } else {
+        // Mark as resolved in Supabase
+        const { data, error } = await supabase
+          .from('tickets')
+          .update({ 
+            isActive: false,
+            updatedAt: new Date().toISOString()
+          })
+          .eq('sessionId', sessionId);
+
+        if (error) throw error;
+      }
+
+      // Update local state
+      const updatedSession = sessions.find(s => s.id === sessionId);
+      if (updatedSession) {
+        onUpdateSession({
+          ...updatedSession,
+          status,
+          closedAt: status === "resolved" ? Date.now() : null
+        });
+      }
+      
+      toast({ title: `Session ${status === "active" ? "reopened" : "closed"}` });
+    } catch (e: any) {
+      console.error("Update status error:", e.message);
+      toast({
+        title: "Failed to update status",
+        description: e.message || "Try again.",
+        variant: "destructive",
+      });
+    }
+  }
+
+  async function deleteChat(sessionId: string) {
+    try {
+      // Delete from Supabase if exists
+      const { error } = await supabase
+        .from('tickets')
+        .delete()
+        .eq('sessionId', sessionId);
+
+      if (error && error.code !== 'PGRST116') throw error; // PGRST116 is "not found"
+
+      onDeleteSession(sessionId);
+      toast({ title: "Session deleted" });
+    } catch (e: any) {
+      console.error("Delete session error:", e.message);
+      toast({
+        title: "Failed to delete session",
+        description: e.message || "Try again.",
+        variant: "destructive",
+      });
+    }
+  }
 
   return (
     <div className="rounded-md border">
@@ -274,6 +560,7 @@ function SessionsTable({
             <TableHead>Priority</TableHead>
             <TableHead>Assignee</TableHead>
             <TableHead>Tags</TableHead>
+            <TableHead>Status</TableHead>
             <TableHead className="w-0">Actions</TableHead>
           </TableRow>
         </TableHeader>
@@ -303,6 +590,9 @@ function SessionsTable({
                   ) : null}
                 </div>
               </TableCell>
+              <TableCell>
+                <StatusBadge status={s.status} />
+              </TableCell>
               <TableCell className="text-right">
                 <div className="flex items-center justify-end gap-2">
                   <Button size="sm" variant="ghost" onClick={() => onOpenSession(s)} aria-label="View session">
@@ -316,12 +606,12 @@ function SessionsTable({
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       {s.status === "active" ? (
-                        <DropdownMenuItem onClick={() => setStatus(s.id, "resolved")}>
+                        <DropdownMenuItem onClick={() => setSessionStatus(s.id, "resolved")}>
                           <CheckCircle2 className="mr-2 h-4 w-4" />
                           Close session
                         </DropdownMenuItem>
                       ) : (
-                        <DropdownMenuItem onClick={() => setStatus(s.id, "active")}>
+                        <DropdownMenuItem onClick={() => setSessionStatus(s.id, "active")}>
                           <RotateCcw className="mr-2 h-4 w-4" />
                           Reopen session
                         </DropdownMenuItem>
@@ -347,7 +637,7 @@ function SessionsTable({
           ))}
           {sessions.length === 0 && (
             <TableRow>
-              <TableCell colSpan={8} className="text-center text-muted-foreground">
+              <TableCell colSpan={9} className="text-center text-muted-foreground">
                 No sessions.
               </TableCell>
             </TableRow>
@@ -355,56 +645,216 @@ function SessionsTable({
         </TableBody>
       </Table>
     </div>
-  )
+  );
 }
 
 export default function AdminPage() {
-  const chats = useChatStore((s) => s.chats)
-  const [tab, setTab] = useState<"active" | "resolved">("active")
-  const [query, setQuery] = useState("")
-  const [priorityFilter, setPriorityFilter] = useState<"all" | "low" | "medium" | "high">("all")
-  const [selected, setSelected] = useState<ChatSession | null>(null)
+  const [chats, setChats] = useState<ChatSession[]>([]);
+  const [tab, setTab] = useState<"active" | "resolved" | "users">("active");
+  const [query, setQuery] = useState("");
+  const [priorityFilter, setPriorityFilter] = useState<"all" | "low" | "medium" | "high">("all");
+  const [selected, setSelected] = useState<ChatSession | null>(null);
+  const [loading, setLoading] = useState(true);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    async function fetchAllSessions() {
+      try {
+        setLoading(true);
+        
+        // Fetch all tickets from Supabase
+        const { data: tickets, error: ticketsError } = await supabase
+          .from('tickets')
+          .select('*');
+
+        if (ticketsError) throw ticketsError;
+
+        // Create a map of active session IDs from Supabase
+        const activeTicketSessionIds = new Set(
+          tickets?.filter(ticket => ticket.isActive).map(ticket => ticket.sessionId) || []
+        );
+
+        // Fetch all sessions from MongoDB
+        const res = await fetch(`http://localhost:5001/admin/sessions`, {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          credentials: "include",
+        });
+
+        if (!res.ok) {
+          const errorData = await res.json().catch(() => ({}));
+          throw new Error(errorData.error || "Failed to fetch sessions");
+        }
+
+        const data = await res.json();
+        const mongoSessions = data.sessions || [];
+
+        // Fetch messages for all sessions
+        const sessionsWithMessages = await Promise.all(
+          mongoSessions.map(async (session: any) => {
+            const sessionId = session.session_id;
+            
+            // Fetch messages for this session using message_ids
+            const messagePromises = (session.message_ids || []).map(async (messageId: string) => {
+              try {
+                const messageRes = await fetch(`http://localhost:5001/admin/message/${messageId}`, {
+                  method: "GET",
+                  headers: {
+                    "Content-Type": "application/json",
+                  },
+                  credentials: "include",
+                });
+                
+                if (messageRes.ok) {
+                  return await messageRes.json();
+                }
+                return null;
+              } catch (error) {
+                console.error(`Failed to fetch message ${messageId}:`, error);
+                return null;
+              }
+            });
+
+            const messagesData = (await Promise.all(messagePromises)).filter(Boolean);
+            
+            // Process messages
+            const messages = messagesData
+              .sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+              .flatMap((m: any) => {
+                const messages = [];
+                
+                // Add user message
+                if (m.user_message) {
+                  messages.push({
+                    id: m.message_id,
+                    role: "user" as const,
+                    content: m.user_message,
+                    createdAt: new Date(m.timestamp).getTime(),
+                  });
+                }
+                
+                // Add assistant response
+                if (m.response) {
+                  messages.push({
+                    id: m.message_id + "-response",
+                    role: "assistant" as const,
+                    content: m.response,
+                    createdAt: new Date(m.timestamp).getTime(),
+                  });
+                }
+                
+                return messages;
+              });
+
+            // Determine title from first message
+            const firstMessage = messagesData[0];
+            const title = firstMessage?.user_message 
+              ? (firstMessage.user_message.substring(0, 50) + (firstMessage.user_message.length > 50 ? "..." : ""))
+              : "Untitled Session";
+
+            // Determine status: active only if in Supabase with isActive: true
+            const isActive = activeTicketSessionIds.has(sessionId);
+            const supabaseTicket = tickets?.find(t => t.sessionId === sessionId);
+            
+            return {
+              id: sessionId,
+              title,
+              status: isActive ? "active" : "resolved",
+              priority: supabaseTicket?.priority || "low",
+              assignee: supabaseTicket?.escalatedTo || null,
+              userName: supabaseTicket?.userName || session.user_id || null,
+              userEmail: supabaseTicket?.userId || session.user_id || null,
+              tags: supabaseTicket?.tags || [],
+              messages,
+              createdAt: new Date(session.last_updated).getTime(),
+              updatedAt: new Date(session.last_updated).getTime(),
+              closedAt: isActive ? null : new Date(session.last_updated).getTime(),
+            };
+          })
+        );
+
+        setChats(sessionsWithMessages);
+      } catch (e: any) {
+        console.error("Fetch sessions error:", e.message);
+        toast({
+          title: "Failed to fetch sessions",
+          description: e.message || "Try again.",
+          variant: "destructive",
+        });
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchAllSessions();
+  }, [toast]);
 
   const stats = useMemo(() => {
-    const total = chats.length
-    const active = chats.filter((c) => c.status === "active").length
-    const resolved = chats.filter((c) => c.status === "resolved").length
-    const users = new Set(chats.map((c) => c.userEmail || "unknown")).size
-    return { total, active, resolved, users }
-  }, [chats])
+    const total = chats.length;
+    const active = chats.filter((c) => c.status === "active").length;
+    const resolved = chats.filter((c) => c.status === "resolved").length;
+    const users = new Set(chats.map((c) => c.userEmail).filter(Boolean)).size;
+    return { total, active, resolved, users };
+  }, [chats]);
 
   const filtered = useMemo(() => {
-    const list = chats.filter((c) => c.status === tab)
-    const q = query.trim().toLowerCase()
+    const list = tab === "users" ? chats : chats.filter((c) => c.status === tab);
+    const q = query.trim().toLowerCase();
     const byQuery = q
       ? list.filter(
           (c) =>
             c.title.toLowerCase().includes(q) ||
             (c.userEmail || "").toLowerCase().includes(q) ||
             (c.userName || "").toLowerCase().includes(q) ||
-            c.tags.some((t) => t.toLowerCase().includes(q)),
+            c.tags.some((t) => t.toLowerCase().includes(q))
         )
-      : list
-    const byPriority = priorityFilter === "all" ? byQuery : byQuery.filter((c) => c.priority === priorityFilter)
-    return byPriority.sort((a, b) => b.updatedAt - a.updatedAt)
-  }, [chats, tab, query, priorityFilter])
+      : list;
+    const byPriority = priorityFilter === "all" ? byQuery : byQuery.filter((c) => c.priority === priorityFilter);
+    return byPriority.sort((a, b) => b.updatedAt - a.updatedAt);
+  }, [chats, tab, query, priorityFilter]);
 
   const usersList = useMemo(() => {
     const map = new Map<
       string,
       { userEmail: string; userName: string | null; active: number; resolved: number; total: number }
-    >()
+    >();
     chats.forEach((c) => {
-      const key = c.userEmail || "unknown"
-      const item = map.get(key) || { userEmail: key, userName: c.userName || null, active: 0, resolved: 0, total: 0 }
-      item.total += 1
-      if (c.status === "active") item.active += 1
-      else item.resolved += 1
-      item.userName = item.userName || c.userName || null
-      map.set(key, item)
-    })
-    return Array.from(map.values()).sort((a, b) => b.total - a.total)
-  }, [chats])
+      if (!c.userEmail) return;
+      const key = c.userEmail;
+      const item = map.get(key) || { userEmail: key, userName: c.userName, active: 0, resolved: 0, total: 0 };
+      item.total += 1;
+      if (c.status === "active") item.active += 1;
+      else item.resolved += 1;
+      item.userName = item.userName || c.userName;
+      map.set(key, item);
+    });
+    return Array.from(map.values()).sort((a, b) => b.total - a.total);
+  }, [chats]);
+
+  function onUpdateSession(updatedSession: ChatSession) {
+    setChats((prev) =>
+      prev.map((s) => (s.id === updatedSession.id ? { ...s, ...updatedSession } : s))
+    );
+  }
+
+  function onDeleteSession(sessionId: string) {
+    setChats((prev) => prev.filter((s) => s.id !== sessionId));
+    if (selected?.id === sessionId) {
+      setSelected(null);
+    }
+  }
+
+  if (loading) {
+    return (
+      <main className="mx-auto max-w-7xl p-4 md:p-6">
+        <div className="flex items-center justify-center h-64">
+          <div className="text-lg">Loading sessions...</div>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="mx-auto max-w-7xl space-y-6 p-4 md:p-6">
@@ -444,9 +894,9 @@ export default function AdminPage() {
 
       <Tabs value={tab} onValueChange={(v: any) => setTab(v)} className="space-y-4">
         <TabsList>
-          <TabsTrigger value="active">Active Sessions</TabsTrigger>
-          <TabsTrigger value="resolved">Resolved Sessions</TabsTrigger>
-          <TabsTrigger value="users">Users</TabsTrigger>
+          <TabsTrigger value="active">Active Sessions ({stats.active})</TabsTrigger>
+          <TabsTrigger value="resolved">Resolved Sessions ({stats.resolved})</TabsTrigger>
+          <TabsTrigger value="users">Users ({stats.users})</TabsTrigger>
         </TabsList>
 
         <TabsContent value="active" className="space-y-4">
@@ -470,7 +920,12 @@ export default function AdminPage() {
               </Select>
             </div>
           </div>
-          <SessionsTable sessions={filtered} onOpenSession={(s) => setSelected(s)} />
+          <SessionsTable
+            sessions={filtered}
+            onOpenSession={(s) => setSelected(s)}
+            onDeleteSession={onDeleteSession}
+            onUpdateSession={onUpdateSession}
+          />
         </TabsContent>
 
         <TabsContent value="resolved" className="space-y-4">
@@ -494,7 +949,12 @@ export default function AdminPage() {
               </Select>
             </div>
           </div>
-          <SessionsTable sessions={filtered} onOpenSession={(s) => setSelected(s)} />
+          <SessionsTable
+            sessions={filtered}
+            onOpenSession={(s) => setSelected(s)}
+            onDeleteSession={onDeleteSession}
+            onUpdateSession={onUpdateSession}
+          />
         </TabsContent>
 
         <TabsContent value="users" className="space-y-4">
@@ -520,7 +980,7 @@ export default function AdminPage() {
                     <TableCell>{u.total}</TableCell>
                     <TableCell className="text-right">
                       <Button asChild size="sm" variant="secondary" aria-label="Email user">
-                        <a href={u.userEmail !== "unknown" ? `mailto:${u.userEmail}` : "#"}>
+                        <a href={`mailto:${u.userEmail}`}>
                           <Mail className="mr-2 h-4 w-4" />
                           Email
                         </a>
@@ -542,8 +1002,13 @@ export default function AdminPage() {
       </Tabs>
 
       {selected && (
-        <SessionDetails open={!!selected} onOpenChange={(v) => !v && setSelected(null)} session={selected} />
+        <SessionDetails
+          open={!!selected}
+          onOpenChange={(v) => !v && setSelected(null)}
+          session={selected}
+          onUpdateSession={onUpdateSession}
+        />
       )}
     </main>
-  )
+  );
 }

@@ -151,7 +151,7 @@ export default function Sidebar() {
             {user ? (
               <div className="flex items-center gap-2">
                 <Avatar className="size-8">
-                  <AvatarFallback>{user.initials}</AvatarFallback>
+                  <AvatarFallback>{user.name.slice(0, 1)}</AvatarFallback>
                 </Avatar>
                 <div className="flex-1">
                   <p className="text-sm font-medium truncate">{user.name}</p>

@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Send, Loader2 } from "lucide-react";
 import { useChatStore } from "@/lib/store/chat-store";
 import { useToast } from "@/hooks/use-toast";
+import { createClient } from '@supabase/supabase-js'
+
 
 export default function MessageInput() {
   const [value, setValue] = useState("");
@@ -91,48 +93,49 @@ export default function MessageInput() {
   }
 
   async function handleEscalate() {
-    if (!activeChatId) return;
-    const userData = localStorage.getItem("support-chat-user");
-    if (!userData) {
-      toast({
-        title: "Not authenticated",
-        description: "Please log in to escalate.",
-        variant: "destructive",
-      });
-      return;
-    }
-    const user = JSON.parse(userData);
-    try {
-      const res = await fetch("http://localhost:5001/end_session", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          session_id: activeChatId,
-          user_id: user.email,
-        }),
-        credentials: "include",
-      });
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.error || "Failed to escalate session");
+      if (!activeChatId) return;
+      const userData = localStorage.getItem("support-chat-user");
+      if (!userData) {
+        toast({
+          title: "Not authenticated",
+          description: "Please log in to escalate.",
+          variant: "destructive",
+        });
+        return;
       }
-      toast({
-        title: "Escalated and session ended",
-        description: "Your session has been escalated to a person and ended.",
-      });
-      setInputDisabled(true);
-      setShowOptions(false);
-    } catch (e: any) {
-      console.error("Escalate error:", e.message);
-      toast({
-        title: "Failed to escalate",
-        description: e.message || "Try again.",
-        variant: "destructive",
-      });
+      const user = JSON.parse(userData);
+      try {
+        const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+        const { data, error } = await supabase
+          .from('tickets')
+          .insert([
+            {
+              isActive: true,
+              sessionId: activeChatId,
+              escalatedTo: 'person',
+              userId: user.email,
+              timestamp: new Date().toISOString(),
+            }
+          ]);
+  
+        if (error) {
+          throw new Error(error.message || "Failed to create ticket");
+        }
+  
+        toast({
+          title: "Escalated and session ended",
+          description: "Your session has been escalated to a person and ended.",
+        });
+        setShowOptions(false);
+      } catch (e: any) {
+        console.error("Escalate error:", e.message);
+        toast({
+          title: "Failed to escalate",
+          description: e.message || "Try again.",
+          variant: "destructive",
+        });
+      }
     }
-  }
 
   async function handleEndSession() {
     if (!activeChatId) return;

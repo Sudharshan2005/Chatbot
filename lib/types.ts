@@ -3,6 +3,7 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   timestamp?: string;
+  createdAt: number
 }
 
 export type SessionStatus = "active" | "resolved"
@@ -14,12 +15,22 @@ export interface Chat {
   title?: string;
   escalated?: boolean;
 }
+
 export type ChatSession = {
   id: string
   title: string
   messages: ChatMessage[]
   createdAt: number
   updatedAt: number
+  status: SessionStatus
+  isActive?: true | false
+  priority: SessionPriority
+  tags: string[]
+  assignee?: string | null
+  userEmail?: string | null
+  userName?: string | null
+  closedAt?: number | null
+  last_updated: number
 }
 
 export interface User {

@@ -34,7 +34,7 @@ export default function LoginPage() {
 
       const user = await res.json();
       console.log("Setting user in localStorage:", user);
-      localStorage.setItem("support-chat-user", JSON.stringify(user));
+      localStorage.setItem("support-chat-user", JSON.stringify(user.user));
       console.log("localStorage after set:", localStorage.getItem("support-chat-user"));
       router.push("/");
     } catch (e: any) {
