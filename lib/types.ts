@@ -4,6 +4,8 @@ export interface ChatMessage {
   content: string;
   timestamp?: string;
   createdAt: number
+  isAgent: boolean;
+  user_message: string;
 }
 
 export type SessionStatus = "active" | "resolved"
