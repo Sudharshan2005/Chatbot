@@ -4,11 +4,18 @@
 import { useState, useEffect } from "react";
 import { useChatStore } from "@/lib/store/chat-store";
 import { cn } from "@/lib/utils";
-import { PanelLeftClose, PanelLeftOpen, Plus, Trash2, LogOut } from "lucide-react";
+import { PanelLeftClose, PanelLeftOpen, Plus, Trash2, LogOut, HelpCircle } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
 interface User {
   id: string;
@@ -17,14 +24,48 @@ interface User {
   initials: string;
 }
 
+interface FAQ {
+  id: string;
+  question: string;
+  answer: string;
+}
+
+const FAQS: FAQ[] = [
+  {
+    id: "1",
+    question: "How do I reset my password?",
+    answer: "You can reset your password by clicking on 'Forgot Password' on the login page. A reset link will be sent to your registered email address."
+  },
+  {
+    id: "2",
+    question: "What are your business hours?",
+    answer: "Our customer support is available 24/7. However, response times may vary outside of regular business hours (9 AM - 6 PM EST)."
+  },
+  {
+    id: "3",
+    question: "How can I track my order?",
+    answer: "You can track your order by logging into your account and visiting the 'Order History' section. You'll find tracking information for all your recent orders."
+  },
+  {
+    id: "4",
+    question: "Do you offer refunds?",
+    answer: "Yes, we offer refunds within 30 days of purchase for most products. Please check our refund policy for specific terms and conditions."
+  },
+  {
+    id: "5",
+    question: "How do I contact customer support?",
+    answer: "You can contact us through this chat support, email at support@company.com, or call our toll-free number at 1-800-123-4567."
+  }
+];
+
 export default function Sidebar() {
   const { chats, activeChatId, setActiveChat, deleteChat, endSession } = useChatStore();
   const [isOpen, setIsOpen] = useState(true);
   const [user, setUser] = useState<User | null>(null);
+  const [faqOpen, setFaqOpen] = useState(false);
   const { toast } = useToast();
   const chatArray = Object.values(chats) as Chat[];
   console.log(chatArray);
-
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -88,6 +129,13 @@ export default function Sidebar() {
     }
   };
 
+  const handleFaqClick = (faq: FAQ) => {
+    // You can implement functionality to auto-fill the chat with the FAQ question
+    // or navigate to a specific help section
+    console.log("FAQ clicked:", faq.question);
+    setFaqOpen(false);
+  };
+
   return (
     <div
       className={cn(
@@ -147,6 +195,48 @@ export default function Sidebar() {
               </li>
             ))}
           </ul>
+          
+          {/* FAQs Section */}
+          <div className="border-t pt-1">
+            <Dialog open={faqOpen} onOpenChange={setFaqOpen}>
+              <DialogTrigger asChild>
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start gap-2 mb-2"
+                >
+                  <HelpCircle className="size-4" />
+                  FAQs
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle>Frequently Asked Questions</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 mt-4">
+                  {FAQS.map((faq) => (
+                    <div
+                      key={faq.id}
+                      className="border rounded-lg p-4 hover:bg-accent/50 cursor-pointer transition-colors"
+                      onClick={() => handleFaqClick(faq)}
+                    >
+                      <h3 className="font-semibold text-sm mb-2">{faq.question}</h3>
+                      <p className="text-sm text-muted-foreground">{faq.answer}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex justify-end pt-4">
+                  <Button 
+                    variant="outline" 
+                    onClick={() => setFaqOpen(false)}
+                  >
+                    Close
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          </div>
+
+          {/* User Info Section */}
           <div className="border-t p-2">
             {user ? (
               <div className="flex items-center gap-2">

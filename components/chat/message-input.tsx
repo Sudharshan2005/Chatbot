@@ -114,7 +114,7 @@ export default function MessageInput() {
               sessionId: activeChatId,
               escalatedTo: 'person',
               userId: user.email,
-              timestamp: new Date().toISOString(),
+              createdAt: new Date().toISOString(),
             }
           ]);
   

@@ -37,9 +37,9 @@ export default function ChatWindow() {
 
   const emptyState = useMemo(
     () => (
-      <div className="flex-1 grid place-items-center text-center text-muted-foreground px-6">
+      <div className="flex-1 grid place-items-center text-center text-muted-foreground px-6 pt-3">
         <div className="space-y-2">
-          <p className="text-lg">Welcome to Gemini Support</p>
+          <p className="text-lg">Welcome to Chatbot Support</p>
           <p className="text-sm">Ask a question to get started.</p>
         </div>
       </div>

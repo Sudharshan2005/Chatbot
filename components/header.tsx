@@ -52,7 +52,7 @@ export default function Header() {
       <div className="mx-auto max-w-6xl px-4 h-14 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="size-7 rounded-md bg-primary" aria-hidden />
-          <h1 className="text-sm md:text-base font-medium text-pretty">Gemini Support</h1>
+          <h1 className="text-sm md:text-base font-medium text-pretty">Chatbot</h1>
         </div>
         <div className="flex items-center gap-2">
           <ThemeToggle />
