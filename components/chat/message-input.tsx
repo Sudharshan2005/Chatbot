@@ -105,7 +105,15 @@ export default function MessageInput() {
       }
       const user = JSON.parse(userData);
       try {
-        const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+        const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+        const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+        if (!url || !anonKey) {
+          throw new Error("Supabase environment variables are not set.");
+        }
+
+        const supabase = createClient(url, anonKey);
+
         const { data, error } = await supabase
           .from('tickets')
           .insert([

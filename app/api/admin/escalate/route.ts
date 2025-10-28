@@ -6,26 +6,28 @@ export async function PATCH(req: NextRequest) {
   try {
     await connectDB();
 
-    const { userId, sessionId } = req.body;
+    const { userId, sessionId } = await req.json();
+
     if (!sessionId) {
-      return NextResponse.json({ error: "Missing user_id" }, { status: 400 });
+      return NextResponse.json({ error: "Missing sessionId" }, { status: 400 });
     }
 
-    const updatedChat = await ChatMessage.findAndUpdate(
+    const updatedChat = await ChatMessage.findOneAndUpdate(
       { session_id: sessionId, user_id: userId },
       {
         $setOnInsert: { ticket: { escalated: true }, user_id: userId },
-        $set: { ticket: { escalated: true } },
+        $set: { "ticket.escalated": true },
       },
       { upsert: true, new: true }
     );
+
     if (!updatedChat) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
+      return NextResponse.json({ error: "Chat not found" }, { status: 404 });
     }
 
     return NextResponse.json({ updatedChat }, { status: 200 });
   } catch (error: any) {
-    console.error("Error fetching user:", error);
+    console.error("Error updating escalation:", error);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }

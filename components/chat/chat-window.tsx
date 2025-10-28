@@ -27,7 +27,7 @@ export default function ChatWindow() {
   }, [chats, activeChatId, setActiveChat, loadHistoricalChats]);
 
   // Smooth scroll to bottom
-  const messages = chats[activeChatId]?.messages || [];
+  const messages = activeChatId ? chats[activeChatId]?.messages || [] : [];
 
   useEffect(() => {
   endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });

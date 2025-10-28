@@ -11,7 +11,9 @@ export interface ChatMessage {
   isTemporary?: boolean;
 }
 
+import type { Key } from "react";
 export interface RawMessage {
+  id: Key | null | undefined;
   _id?: string;
   message_id: string;
   user_message?: string;
@@ -59,7 +61,7 @@ export interface ChatSession {
   userName: string | null;
   userEmail: string | null;
   tags: string[];
-  messages: RawMessage[]; // Changed to RawMessage[] to match backend
+  messages: RawMessage[];
   createdAt: number;
   updatedAt: number;
   closedAt: number | null;
@@ -71,6 +73,8 @@ export interface User {
   name: string;
   email: string;
   initials: string; 
+  avatarUrl: string;
+  displayName: string;
 }
 
 export type AuthState = {

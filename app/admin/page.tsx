@@ -17,6 +17,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Mail, Eye, MoreHorizontal, CheckCircle2, RotateCcw, XCircle, Download, User, UserCheck } from "lucide-react"; // Added User and UserCheck icons
 import { cn } from "@/lib/utils";
 import { createClient } from '@supabase/supabase-js';
+import { ChatMessage } from "@/lib/types";
 
 // Initialize Supabase client
 const supabase = createClient(
@@ -221,7 +222,7 @@ function SessionDetails({
         if (error) throw error;
       }
 
-      const updatedSession = { ...session, ...meta, status: "active" };
+      const updatedSession = { ...session, ...meta, status: "active" as "active" | "resolved", };
       onUpdateSession(updatedSession);
       toast({ title: "Session updated" });
     } catch (e: any) {
@@ -272,7 +273,7 @@ function SessionDetails({
         if (error) throw error;
       }
 
-      const updatedSession = { ...session, tags: newTags, status: "active" };
+      const updatedSession = { ...session, tags: newTags, status: "active" as "active" | "resolved", };
       onUpdateSession(updatedSession);
       toast({ title: "Tag added" });
     } catch (e: any) {
@@ -294,7 +295,7 @@ function SessionDetails({
 
       if (fetchError) throw fetchError;
 
-      const newTags = (ticket.tags || []).filter(t => t !== tag);
+      const newTags = (ticket.tags || []).filter((t: string) => t !== tag);
       const { error } = await supabase
         .from('tickets')
         .update({ 
@@ -329,7 +330,7 @@ function SessionDetails({
       `Closed: ${formatTime(session.closedAt)}`,
       "",
       "Transcript:",
-      ...session.messages.map((m) => `[${new Date(m.createdAt).toISOString()}] ${m.role.toUpperCase()}: ${m.content}`),
+      ...session.messages.map((m) => `[${new Date(m.createdAt ?? Date.now()).toISOString()}] ${(m.role ?? "unknown").toUpperCase()}: ${m.content ?? ""}`),
     ].join("\n");
     const blob = new Blob([lines], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -538,15 +539,36 @@ function SessionDetails({
           </div>
 
           <div className="flex flex-col rounded-md border p-4">
-            <div className="mb-4 text-sm font-medium">Messages ({session.messages.length})</div>
-            <div className="flex-1 space-y-4 overflow-auto max-h-[500px] pr-2">
-              {session.messages.length === 0 ? (
-                <div className="text-sm text-muted-foreground text-center py-8">No messages found.</div>
-              ) : (
-                session.messages.map((m) => <MessageBubble key={m.id} message={m} />)
-              )}
-            </div>
-          </div>
+  <div className="mb-4 text-sm font-medium">
+    Messages ({session.messages.length})
+  </div>
+
+  <div className="flex-1 space-y-4 overflow-auto max-h-[500px] pr-2">
+    {session.messages.length === 0 ? (
+      <div className="text-sm text-muted-foreground text-center py-8">
+        No messages found.
+      </div>
+    ) : (
+      session.messages.map((m) => {
+        const chatMessage: ChatMessage = {
+          id: m._id ?? m.message_id ?? m.id?.toString() ?? crypto.randomUUID(),
+          role: m.role ?? "assistant",
+          content: m.content ?? m.response ?? m.user_message ?? "",
+          createdAt: m.createdAt ?? Date.now(),
+          timestamp: m.timestamp,
+          isAgent: m.isAgent,
+          user_message: m.user_message,
+          response: m.response,
+          waitingForResponse: m.waiting_for_agent_response,
+          isTemporary: false,
+        };
+
+        return <MessageBubble key={chatMessage.id} message={chatMessage} />;
+      })
+    )}
+  </div>
+</div>
+
         </div>
       </DialogContent>
     </Dialog>

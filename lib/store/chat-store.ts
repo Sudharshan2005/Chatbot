@@ -33,11 +33,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
     if (!chatId) return;
     const messageId = uuidv4();
     const message: ChatMessage = {
-      id: messageId,
-      role: "user",
-      content,
-      timestamp: new Date().toISOString(),
-    };
+    id: messageId,
+    role: "user",
+    content,
+    timestamp: new Date().toISOString(),
+    createdAt: Date.now(),
+  };
+
     set((state) => {
       const currentChat = state.chats[chatId] || { id: chatId, messages: [], title: "New chat" };
       const isFirstMessage = currentChat.messages.length === 0;
@@ -61,6 +63,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       role: "assistant",
       content,
       timestamp: new Date().toISOString(),
+      createdAt: Date.now(),
     };
     set((state) => ({
       chats: {
@@ -211,6 +214,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
             role: "user",
             content: m.user_message,
             timestamp: m.timestamp,
+            createdAt: new Date(m.timestamp).getTime(),
           });
           if (m.response) {
             messages.push({
@@ -218,6 +222,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
               role: "assistant",
               content: m.response,
               timestamp: m.timestamp,
+              createdAt: new Date(m.timestamp).getTime(),
             });
           }
         });

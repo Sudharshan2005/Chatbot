@@ -16,6 +16,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import type { Chat } from "@/lib/types";
+
 
 interface User {
   id: string;
